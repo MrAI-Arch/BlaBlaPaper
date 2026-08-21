@@ -445,13 +445,10 @@ def main():
         n_deep = len(tech_points) + 1
         n_eli5 = len(tech_points) + 1
 
-        if is_tex_input:
-            before, refs_section, after = core._split_references_section(full_text)
-            if refs_section is not None:
-                n_trans = len(core.split_markdown_for_translation(before)) + \
-                          len(core.split_markdown_for_translation(after))
-            else:
-                n_trans = len(core.split_markdown_for_translation(full_text))
+        before, refs_section, after = core._split_references_section(full_text)
+        if refs_section is not None:
+            n_trans = len(core.split_markdown_for_translation(before)) + \
+                      len(core.split_markdown_for_translation(after))
         else:
             n_trans = len(core.split_markdown_for_translation(full_text))
         n_fig = len(unique_imgs)
@@ -509,7 +506,7 @@ def main():
                 translation_content[0] = core.translate_markdown(
                     full_text, valid_filenames, config.MODEL_NAME_TEXT,
                     checkpoint_dir=checkpoint_dir,
-                    preserve_references=is_tex_input,
+                    preserve_references=True,
                     executor=text_executor, pbar=pbar_trans,
                 )
                 translation_title = f"{main_title} 原文翻译"

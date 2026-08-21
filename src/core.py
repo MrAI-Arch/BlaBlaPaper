@@ -451,35 +451,58 @@ def split_markdown_for_translation(full_text, max_chars=8000):
 
 
 def _split_references_section(full_text):
-    """把全文按 References 章节拆为 (before, refs_section, after)。
+    """把全文按参考文献章节拆为 (before, refs_section, after)。
 
-    章节范围：## References 标题 → 下一个同级/更高级标题、首个独立图片行、或文末。
+    识别优先级：
+    1. ``## References`` / ``## Bibliography`` 标题（IGNORECASE）→ 到下一个同级或更高级
+       标题、首个独立图片行、或文末。
+    2. 无标题时兜底识别行首形如 ``[1] ... [2] ... [3] ...`` 的编号引用条目 run
+       （MinerU 输出常无 References 标题，引用条目裸排在文末）。要求连续出现
+       1、2、3 才认定，避免与正文枚举列表混淆；多个候选时取最后一个（参考文献必在正文之后）。
+
     未找到时返回 (full_text, None, "")。
     """
-    m = re.search(r"(?m)^(#{1,6})\s+References\s*$", full_text, re.IGNORECASE)
-    if not m:
-        return full_text, None, ""
-    heading_level = len(m.group(1))
-    start = m.start()
-    rest = full_text[m.end():]
-    ends = []
-    next_heading = re.search(r"(?m)^#{1,%d}\s+\S" % heading_level, rest)
-    if next_heading:
-        ends.append(next_heading.start())
-    next_image = re.search(r"(?m)^!\[", rest)
-    if next_image:
-        ends.append(next_image.start())
-    if ends:
-        end = m.end() + min(ends)
-    else:
-        end = len(full_text)
-    return full_text[:start], full_text[start:end], full_text[end:]
+    m = re.search(r"(?m)^(#{1,6})\s+(References|Bibliography)\s*$", full_text, re.IGNORECASE)
+    if m:
+        heading_level = len(m.group(1))
+        start = m.start()
+        rest = full_text[m.end():]
+        ends = []
+        next_heading = re.search(r"(?m)^#{1,%d}\s+\S" % heading_level, rest)
+        if next_heading:
+            ends.append(next_heading.start())
+        next_image = re.search(r"(?m)^!\[", rest)
+        if next_image:
+            ends.append(next_image.start())
+        end = m.end() + min(ends) if ends else len(full_text)
+        return full_text[:start], full_text[start:end], full_text[end:]
+
+    # 兜底：无标题，按 [1] [2] [3] ... 编号条目识别
+    bracket = re.compile(r"(?m)^\[(\d+)\]\s+\S")
+    hits = [(int(g.group(1)), g.start()) for g in bracket.finditer(full_text)]
+    # 候选起点：[1] 紧接 [2] 紧接 [3]（序号连续）；取最后一个候选——参考文献必在正文之后
+    cand_idx = [i for i in range(len(hits) - 2)
+                if hits[i][0] == 1 and hits[i + 1][0] == 2 and hits[i + 2][0] == 3]
+    if cand_idx:
+        start = hits[cand_idx[-1]][1]
+        rest = full_text[start:]
+        ends = []
+        next_heading = re.search(r"(?m)^#{1,6}\s+\S", rest)
+        if next_heading:
+            ends.append(next_heading.start())
+        next_image = re.search(r"(?m)^!\[", rest)
+        if next_image:
+            ends.append(next_image.start())
+        end = start + min(ends) if ends else len(full_text)
+        return full_text[:start], full_text[start:end], full_text[end:]
+
+    return full_text, None, ""
 
 
 def translate_markdown(full_text, valid_filenames, model_name, checkpoint_dir=None, preserve_references=False, executor=None, pbar=None):
     """将论文原文逐段翻译为简体中文，保留图片/公式/引用/标题结构。走文本供应商。
 
-    preserve_references=True 时，References 章节原文保留、不送 LLM（TeX 路径适用）。
+    preserve_references=True 时，References 章节原文保留、不送 LLM。
     """
     full_ckpt = "translation_full_pr" if preserve_references else "translation_full"
     cached = _load_text_checkpoint(checkpoint_dir, full_ckpt)
