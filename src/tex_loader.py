@@ -490,12 +490,12 @@ def _rewrite_images(md, input_dir, images_dir):
         block = m.group(0)
         cap_m = re.search(r"<figcaption[^>]*>(.*?)</figcaption>", block, re.S)
         cap = _clean_html_inline(cap_m.group(1)) if cap_m else ""
-        img_tags = re.findall(r"<img\b[^>]*>", block)
+        img_tags = re.findall(r"<(?:img|embed|object)\b[^>]*>", block)
         if not img_tags:
             return cap  # 无 <img>（多为 TikZ 被 pandoc 丢弃）：保留 caption 文本作上下文
         out = []
         for tag in img_tags:
-            src_m = re.search(r'\bsrc=["\']([^"\']+)["\']', tag)
+            src_m = re.search(r'\b(?:src|data)=["\']([^"\']+)["\']', tag)
             if not src_m or src_m.group(1).startswith(("http://", "https://")):
                 continue
             src_abs = os.path.join(input_dir, src_m.group(1))
@@ -512,10 +512,10 @@ def _rewrite_images(md, input_dir, images_dir):
         return "\n\n".join(out)
     md = re.sub(r"<figure\b[^>]*>.*?</figure>", fig_repl, md, flags=re.S)
 
-    # 3) 残余独立 <img ...>（不在 <figure> 里，如 Pandoc 包在 <div> 里的单图）
+    # 3) 残余独立 <img>/<embed>/<object ...>（不在 <figure> 里，如 Pandoc 包在 <div> 里的单图；<embed> 多见于 .pdf includegraphics）
     def img_repl(m):
         tag = m.group(0)
-        src_m = re.search(r'\bsrc=["\']([^"\']+)["\']', tag)
+        src_m = re.search(r'\b(?:src|data)=["\']([^"\']+)["\']', tag)
         if not src_m or src_m.group(1).startswith(("http://", "https://")):
             return ""
         src_abs = os.path.join(input_dir, src_m.group(1))
@@ -529,7 +529,7 @@ def _rewrite_images(md, input_dir, images_dir):
             return ""
         entries.append((fname, alt))
         return "![%s](images/%s)" % (alt, fname)
-    md = re.sub(r"<img\b[^>]*>", img_repl, md)
+    md = re.sub(r"<(?:img|embed|object)\b[^>]*>", img_repl, md)
 
     # 4) 清理残余 <figure>/<figcaption> 标签（不匹配块的残片）
     md = re.sub(r"</?(?:figure|figcaption)\b[^>]*>", "", md)
