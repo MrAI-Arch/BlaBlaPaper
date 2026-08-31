@@ -7,6 +7,8 @@ import mimetypes
 import os
 import zipfile
 
+from . import logutil
+
 
 def generate_slug_from_title(title):
     """
@@ -45,7 +47,7 @@ def encode_image_to_base64(image_path):
         return f"data:{mime_type};base64,{base64.b64encode(f.read()).decode('utf-8')}"
 
 
-def clean_llm_output(text):
+def clean_llm_output(text, strip_headings=True):
     """
     清理 LLM 输出中的 markdown 代码块标记和标题语法
 
@@ -61,6 +63,10 @@ def clean_llm_output(text):
     # 移除 markdown 代码块标记
     text = re.sub(r'^```(markdown)?\s*', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\s*```$', '', text)
+
+    # 仅在分析报告等"禁止标题"场景下剥离标题；翻译等需保留标题时跳过
+    if not strip_headings:
+        return text.strip()
 
     # 移除所有位置的 Markdown 标题（包括列表项中的标题，如 "- ## xxxx"）
     lines = text.split('\n')
@@ -162,5 +168,5 @@ def extract_zip(zip_path, extract_to_dir):
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(extract_to_dir)
 
-    print(f"✅ 解压完成: {extract_to_dir}")
+    logutil.log(f"✅ 解压完成: {extract_to_dir}", "INFO")
     return extract_to_dir

@@ -2,7 +2,7 @@
 
 > **让阅读英文变简单，让阅读论文变简单，让每个人都能通俗地看懂所有科研。**
 
-BlaBlaPaper 是一个自动化论文解读工具。输入一篇英文 PDF，它会自动提取图表、生成结构化技术解析和通俗讲解，帮你突破语言和术语的障碍，直接抓住论文核心。
+BlaBlaPaper 是一个自动化论文解读工具。输入一篇英文 PDF，它会自动提取图表，并生成技术解析、通俗讲解、图表详解、原文翻译四份报告，帮你突破语言和术语的障碍，直接抓住论文核心。
 
 ---
 
@@ -23,7 +23,7 @@ BlaBlaPaper 尝试做一件事：**把论文讲成人话**。让技术归技术�
 | 特性 | 说明 |
 |---|---:|
 | **🤖 PDF 一键解析** | 基于 MinerU 服务，自动提取文本、图片、表格 |
-| **📊 三层报告** | 技术深挖 + 通俗讲解（ELI5）+ 图表详解 |
+| **📊 四层报告** | 技术深挖 + 通俗讲解（ELI5）+ 图表详解 + 原文翻译 |
 | **🧠 LLM 驱动** | 支持 OpenAI / DeepSeek 等多种 API，智能提取核心贡献 |
 | **🖼️ 图表自动分析** | 每张图单独解读，不需要反复翻原文找说明 |
 | **📝 元数据提取** | 作者、期刊、年份等基本信息自动整理 |
@@ -39,6 +39,7 @@ BlaBlaPaper 尝试做一件事：**把论文讲成人话**。让技术归技术�
 - Python 3.10+
 - 一个 LLM API Key（OpenAI / DeepSeek 等）
 - （可选）MinerU Token，用于 PDF 解析
+- （可选）[pandoc](https://pandoc.org/)，用于 TeX 源码输入模式（`sudo apt install pandoc`）
 
 ### 安装
 
@@ -62,8 +63,8 @@ OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # ---- DeepSeek（二选一即可） ----
 # model_provider=DeepSeek
-# model=deepseek-chat
-# base_url=https://api.deepseek.com/v1
+# model=deepseek-v4-flash
+# base_url=https://api.deepseek.com
 # wire_api=chat
 # OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
@@ -82,6 +83,9 @@ python main.py /path/to/paper.pdf
 # 生成报告的同时导出 HTML 网页
 python main.py /path/to/paper.pdf --html
 
+# 直接分析论文的 TeX 源码目录（代码/公式/表格更精确，需 pandoc）
+python main.py /path/to/arXiv-xxxx-source/
+
 # 追加/更新到 GitHub Pages 论文库 docs/
 python main.py /path/to/paper.pdf --pages-dir docs
 
@@ -92,19 +96,26 @@ python main.py /path/to/outputs/paper-title --html-only
 python main.py /path/to/outputs/paper-title --html-only --pages-dir docs
 ```
 
+> **输入自动识别**：传入 PDF → 走 MinerU 解析；传入含 `.tex`（带 `\documentclass`）的目录 → 走 TeX 源码模式（pandoc 转换，代码/公式/表格逐字精确，自动栅格化图片，需 pandoc + poppler/ghostscript）；传入含 `full.md` 的目录 → 按 MinerU 产物处理。TeX 模式若检测到 TikZ 图会提示确认（`--yes` 可跳过），转换失败会带阶段与定位信息报错。
+
+> **日志**：运行日志同时打印到命令行并写入 `outputs/<paper>/run-<时间戳>.log`（保留历史）。默认只显示阶段进度；加 `-v` / `--verbose`（或设 `BLABLA_VERBOSE=1`）显示每次 LLM 调用的完整信息、checkpoint/parallel 等调试细节；LLM 出错时诊断信息始终打印。
+
 输出在 `outputs/` 目录下：
 
 ```
 outputs/your-paper-title/
-├── paper_notes.md      # 技术解析报告
-├── ELI5_notes.md       # 通俗讲解报告
-├── figs_notes.md       # 图表详解报告
-├── info.json           # 论文元数据
-└── html/               # 静态网页（--html 或 --html-only）
+├── paper_notes.md        # 技术解析报告
+├── ELI5_notes.md         # 通俗讲解报告
+├── figs_notes.md         # 图表详解报告
+├── translation_notes.md  # 原文翻译报告
+├── info.json             # 论文元数据
+├── run-*.log             # 运行日志（带时间戳，保留历史）
+└── html/                 # 静态网页（--html 或 --html-only）
     ├── index.html
     ├── paper_notes/
     ├── eli5_notes/
     ├── figs_notes/
+    ├── translation_notes/
     └── images/
 ```
 
@@ -135,7 +146,8 @@ docs/
 │   ├── images/
 │   ├── paper_notes/
 │   ├── eli5_notes/
-│   └── figs_notes/
+│   ├── figs_notes/
+│   └── translation_notes/
 └── paper-title-b/
     └── ...
 ```
@@ -160,6 +172,7 @@ BlaBlaPaper/
 │   ├── llm_client.py        # LLM API 调用（支持 Responses API 和 Chat）
 │   ├── core.py              # 核心业务逻辑
 │   ├── prompts.py           # 提示词模板
+│   ├── tex_loader.py        # TeX 源码 → Markdown 转换（pandoc 驱动）
 │   ├── html_exporter.py     # Markdown → HTML 导出
 │   └── utils.py             # 工具函数
 ├── outputs/                 # 报告输出
@@ -204,9 +217,13 @@ BlaBlaPaper 兼容 **OpenAI-compatible API**，理论上可以接入任何兼容
 
 逐图分析，结合原文上下文说明每张图/表的含义和关键发现。
 
+### 原文翻译（translation_notes.md）
+
+按原文结构逐段翻译为简体中文，**保留图片、公式、引用编号、标题层级、表格和代码**——相当于一份中文排版的论文全文，方便对照阅读。
+
 ### HTML 网页
 
-三份报告自动生成带导航栏和目录的静态网页，支持随时在浏览器中打开查看。
+四份报告自动生成带导航栏和目录的静态网页，支持随时在浏览器中打开查看。
 
 </details>
 
@@ -220,8 +237,21 @@ A: 检查 `.env` 文件是否在项目根目录，且字段名拼写正确。
 **Q: 怎么只重新生成 HTML 不改报告？**
 A: 用 `--html-only` 模式：`python main.py /path/to/outputs/paper-title --html-only`
 
+**Q: 原文翻译和通俗讲解有什么区别？**
+A: 原文翻译（translation_notes.md）按原文结构逐段直译，保留图片/公式/引用/表格/代码，相当于中文版全文；通俗讲解（ELI5_notes.md）只提炼核心创新点，用大白话和类比重新讲一遍，不复述全文。
+
 **Q: MinerU Token 怎么获取？**
 A: 访问 [MinerU Token 管理](https://mineru.net/apiManage/token) 创建。
+
+**Q: 什么时候用 TeX 源码模式？**
+A: 当你能拿到论文的 LaTeX 源码（如 arXiv 的 source tarball）时优先用 TeX 模式——代码、公式、表格的精度远高于 PDF→MinerU 路径（MinerU 会把代码逐字符 OCR 拼错、把多列表格拼坏）。安装 pandoc 后传入解压后的源码目录即可，工具会自动识别。检测到 TikZ 图会提示（本工具不渲染 TikZ，仅跳过并警告）。
+
+---
+
+## 后续计划
+
+- **跨 notes 并发、notes 内串行**：当前流水线是"组内并发、组间串行"（深挖组 → ELI5 组 → 翻译组 → 图组接力，每组内部点间并发）。计划反过来——让 `paper_notes` / `ELI5_notes` / `translation_notes` 三条独立轨道并行，单条 notes 内部顺序生成（为内容连贯性接受串行）。`translation` 不依赖技术点提取，可最早启动。目的：在保证单份报告连贯的前提下用跨 notes 并发换吞吐。
+- **figs_notes 按需生成**：图片多时逐图分析是总执行时延的大头。计划支持按需 / 限流 / 懒生成 `figs_notes`（或设为可选），避免无谓分析大量图片拖慢流水线。
 
 ---
 

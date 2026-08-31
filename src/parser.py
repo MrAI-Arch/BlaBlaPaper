@@ -8,13 +8,15 @@ import re
 import shutil
 import sys
 
+from . import logutil
+
 # 可选依赖：PyMuPDF
 try:
     import fitz  # PyMuPDF
     HAS_PYMUPDF = True
 except ImportError:
     HAS_PYMUPDF = False
-    print("[警告] PyMuPDF 未安装，将无法提取 PDF 元数据。请运行: pip install PyMuPDF")
+    logutil.log("[警告] PyMuPDF 未安装，将无法提取 PDF 元数据。请运行: pip install PyMuPDF", "WARN")
 
 
 def extract_images_from_markdown(md_content, base_dir):
@@ -28,7 +30,7 @@ def extract_images_from_markdown(md_content, base_dir):
     Returns:
         按顺序排列的图片文件绝对路径列表
     """
-    print("--- 正在扫描 Markdown 中的图片引用 ---")
+    logutil.log("--- 正在扫描 Markdown 中的图片引用 ---", "INFO")
     img_refs = re.findall(r'!\[.*?\]\((.*?)\)', md_content)
     ordered_source_paths = []
 
@@ -116,7 +118,7 @@ def get_paper_info(input_dir):
                     caption_map[fname] = re.sub(r'\s+', ' ', caption).strip()
 
     except Exception as e:
-        print(f"[警告] 元数据解析失败: {e}")
+        logutil.log(f"[警告] 元数据解析失败: {e}", "WARN")
 
     return paper_title, caption_map
 
@@ -151,7 +153,7 @@ def extract_discarded_text(input_dir):
         return None
 
     except Exception as e:
-        print(f"[警告] 提取 discarded 文本失败: {e}")
+        logutil.log(f"[警告] 提取 discarded 文本失败: {e}", "WARN")
         return None
 
 
@@ -201,10 +203,10 @@ def get_pdf_metadata_context(input_dir):
                 pdf_metadata = "\n".join(metadata_text) if metadata_text else None
                 if pdf_metadata:
                     context_parts.append(pdf_metadata)
-                    print("   -> 已提取 PDF 元数据")
+                    logutil.log("   -> 已提取 PDF 元数据", "INFO")
 
             except Exception as e:
-                print(f"[警告] PDF 元数据提取失败: {e}")
+                logutil.log(f"[警告] PDF 元数据提取失败: {e}", "WARN")
 
     # 2. 提取 discarded 文本
     discarded_text = extract_discarded_text(input_dir)
@@ -212,12 +214,12 @@ def get_pdf_metadata_context(input_dir):
         context_parts.append(
             f"=== 文档中被丢弃的文本块 (Discarded Text Blocks) ===\n\n{discarded_text}"
         )
-        print("   -> 已提取 discarded 文本块")
+        logutil.log("   -> 已提取 discarded 文本块", "INFO")
 
     # 3. 合并所有补充信息
     if context_parts:
         combined_context = "\n\n".join(context_parts)
-        print("   -> 将补充信息添加到上下文")
+        logutil.log("   -> 将补充信息添加到上下文", "INFO")
         return (
             f"=== 补充信息 ===\n\n{combined_context}\n\n"
             "请参考上述补充信息（PDF 元数据和文档中被丢弃的文本块）"

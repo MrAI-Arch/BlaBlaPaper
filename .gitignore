@@ -17,3 +17,7 @@ __pycache__/
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# 论文产出（归档在 orphan 分支 outputs，代码分支不跟踪）
+papers/
+outputs/
